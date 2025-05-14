@@ -1,0 +1,76 @@
+#!/bin/bash
+# macOS script to run QEMU for Sebria OS with user-mode networking and debug
+
+# Ensure QEMU is installed
+if ! command -v qemu-system-x86_64 &> /dev/null; then
+    echo "Error: qemu-system-x86_64 not found. Install QEMU (e.g., via Homebrew: brew install qemu)."
+    exit 1
+fi
+
+# Step 1: Check macOS firewall status
+echo "Checking macOS firewall status..."
+FIREWALL_STATE=$(sudo /usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate 2>/dev/null)
+if [[ "$FIREWALL_STATE" == *"enabled"* ]]; then
+    echo "Warning: macOS firewall is enabled, which may block QEMU networking."
+    echo "To disable temporarily, run: sudo /usr/libexec/ApplicationFirewall/socketfilterfw --setglobalstate off"
+fi
+
+# Step 2: Check existing utun interfaces
+echo "Existing utun interfaces before QEMU:"
+ifconfig | grep -E '^utun[0-9]+' || echo "No utun interfaces found."
+
+# Step 3: Launch QEMU with user-mode networking and NE2000
+echo "Starting QEMU..."
+qemu-system-x86_64 \
+    -m 2048 \
+    -cdrom os-image.iso \
+    -cpu host \
+    -netdev user,id=net0 \
+    -device ne2k_isa,netdev=net0,mac=52:54:00:12:34:56,irq=9,iobase=0x300 \
+    -accel hvf \
+    -d guest_errors,unimp,net \
+    -D qemu_log.txt 2>&1 &
+
+QEMU_PID=$!
+sleep 3
+
+# Step 4: Check for new utun interface
+echo "utun interfaces after QEMU:"
+NEW_UTUN=$(ifconfig | grep -E '^utun[0-9]+' || echo "No utun interfaces found.")
+echo "$NEW_UTUN"
+if [[ "$NEW_UTUN" == "No utun interfaces found." ]]; then
+    echo "Warning: No new utun interface detected. Check qemu_log.txt for errors."
+    echo "Try running this script with sudo: sudo ./run_sebria_os.sh"
+fi
+
+# Step 5: Monitor traffic on utun interfaces
+echo "Monitoring traffic with tcpdump (requires sudo)..."
+for i in {0..7}; do
+    if ifconfig utun$i >/dev/null 2>&1; then
+        echo "Starting tcpdump on utun$i..."
+        sudo tcpdump -i utun$i -n -c 10 'host 10.0.2.15 or host 10.0.2.2' 2>/dev/null &
+    fi
+done
+echo "In another terminal, run: ping 10.0.2.15"
+echo "Look for ARP or ICMP packets in tcpdump output."
+
+# Step 6: Instructions for Sebria OS
+echo "In Sebria OS:"
+echo "1. Press 'S' to enter the shell."
+echo "2. Type 'net' to initialize the network and display counters."
+echo "   - Row 4: MAC: 52:54:00:12:34:56 (confirm correct MAC)."
+echo "   - Row 6: Sending test ARP... (confirm ARP attempt)."
+echo "   - Rows 2-3: Network: Connected, Rx: N, Tx: M (Tx >= 1 after ARP)."
+echo "   - Row 5: RX Interrupt or TX Interrupt (should see TX after ARP)."
+echo "   - Row 7: ISR: XX, RSR: XX, TSR: XX (TSR=01 for successful TX)."
+echo "   - Row 8: IRQ 9 Fired (confirms interrupt delivery)."
+echo "3. If Rx/Tx still 0, note TSR value (e.g., 08=buffer overflow) and check qemu_log.txt."
+echo "4. Share output from rows 2-8 and tcpdump results for further debugging."
+
+# Step 7: Keep script running until QEMU exits
+echo "QEMU is running (PID: $QEMU_PID). Press Ctrl+C to stop."
+wait $QEMU_PID
+echo "QEMU has exited. Check qemu_log.txt for details."
+
+# Cleanup (optional)
+# killall tcpdump 2>/dev/null
