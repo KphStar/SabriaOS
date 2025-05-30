@@ -1241,69 +1241,79 @@ void keyboard_handler() {
                     }
                 }
             } else if (strncmp(shell_buffer, "cat ", 4) == 0) {
-                append_to_log(shell_buffer);
-                if (!vfs_initialized) {
-                    print_string("VFS not initialized. cat command disabled.", 15, 0);
-                    clear_shell_command_prompt();
-                    print_string("Command: ", 20, 0);
-                    print_string(shell_buffer, 20, 9);
-                    display_shell_prompt();
-                } else {
-                    const char* filename = shell_buffer + 4;
-                   // int fd = vfs_open_file(filename);
-                    int fd = vfs_open_file(filename);
-                    print_string("File descriptor: ", 15, 0);
-                    print_number(fd, 15, 17);
-                    if (fd >= 0) {
-                        //char buf[128] = {0};
-                        //int len = vfs_read_file(fd, buf, 127);
-                        char buf[256];  // Chunk buffer
-                         int total_read = 0;
-                         int row = 15;
-                         int col = 0;
-                         int bytes;
+    append_to_log(shell_buffer);
+    if (!vfs_initialized) {
+        print_string("VFS not initialized. cat command disabled.", 1, 0);
+    } else {
+        const char* filename = shell_buffer + 4;
+        int fd = vfs_open_file(filename);
+        if (fd >= 0) {
+            clear_screen();
+            char buf[1024] = {0};
+            int total_read = 0;
+            int bytes_read = vfs_read_file(fd, buf, sizeof(buf) - 1);
 
-                        print_string("Bytes read: ", 16, 0);
-                       // print_number(len, 16, 12);
-                       // if (len >= 0) {
-                       //     buf[len] = 0;
-                        //    for (int i = 0; i < len; i++) {
-                        //        if (buf[i] < 32 || buf[i] > 126) {
-                         //           buf[i] = ' ';
-                         //       }
-                         //   }
-                         //   print_string(buf, 17, 0);
-                       // } else {
-                       //     print_string("Error reading file", 17, 0);
-                       // }
+            vfs_close_file(fd);
 
-                       while ((bytes = vfs_read_file(fd, buf, sizeof(buf) - 1)) > 0) {
-                buf[bytes] = 0;
-                for (int i = 0; i < bytes; i++) {
+            if (bytes_read <= 0) {
+                print_string("File is empty or read error.", 1, 0);
+            } else {
+                int row = 1, col = 0;
+                for (int i = 0; i < bytes_read; i++) {
                     char c = buf[i];
                     if (c < 32 || c > 126) c = ' ';
+
                     unsigned short* vga = (unsigned short*)VGA_BUFFER;
                     vga[row * VGA_WIDTH + col] = 0x0700 | c;
                     col++;
                     if (col >= VGA_WIDTH) {
                         col = 0;
                         row++;
-                        if (row >= 22) break;
+                        if (row > 21) {
+                            // Show prompt to continue
+                            print_string("-- More -- Press Space to continue --", 22, 20);
+
+                            // Wait for keypress
+                            unsigned char status, scancode;
+                            while (1) {
+                                asm volatile("inb $0x64, %0" : "=a"(status));
+                                if (status & 0x01) {
+                                    asm volatile("inb $0x60, %0" : "=a"(scancode));
+                                    if (!(scancode & 0x80)) {
+                                        break;
+                                    }
+                                }
+                            }
+
+                            clear_screen();
+                            row = 1;
+                            col = 0;
+                        }
                     }
                 }
-                total_read += bytes;
-                if (row >= 22) break;
+                // If end of file doesn't end with full screen, just wait for key
+                print_string("-- End of File -- Press any key --", 22, 20);
+                unsigned char status, scancode;
+                while (1) {
+                    asm volatile("inb $0x64, %0" : "=a"(status));
+                    if (status & 0x01) {
+                        asm volatile("inb $0x60, %0" : "=a"(scancode));
+                        if (!(scancode & 0x80)) break;
+                    }
+                }
+                clear_screen();
             }
-                        vfs_close_file(fd);
-                    } else {
-                        print_string("File not found", 17, 0);
-                    }
-                    clear_shell_command_prompt();
-                    print_string("Command: ", 20, 0);
-                    print_string(shell_buffer, 20, 9);
-                    display_shell_prompt();
-                }
-            } else if (strncmp(shell_buffer, "kill ", 5) == 0) {
+        } else {
+            print_string("File not found.", 1, 0);
+        }
+    }
+
+    // Reset shell
+    clear_shell_command_prompt();
+    print_string("Command: ", 20, 0);
+    print_string(shell_buffer, 20, 9);
+    display_shell_prompt();
+} else if (strncmp(shell_buffer, "kill ", 5) == 0) {
                 append_to_log(shell_buffer);
                 int pid = 0;
                 for (int i = 5; shell_buffer[i] >= '0' && shell_buffer[i] <= '9'; i++) {
