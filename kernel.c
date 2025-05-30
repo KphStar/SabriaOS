@@ -9,6 +9,7 @@
 #define KERNEL_BASE 0xC0000000
 #define USER_BASE 0x100000
 #define FILE_WRITE_MAX 2048
+#define MAX_FILE_SIZE 2048
 
 // System call numbers
 #define SYS_WRITE 1
@@ -48,12 +49,13 @@ typedef struct {
 } Process;
 
 // Inode structure for file system
+// Update your Inode definition:
 typedef struct {
-    int id;                   // Inode ID
-    char name[32];            // File name
-    int size;                 // File size in bytes
-    int used;                 // 1: in use, 0: free
-    char data[128];           // File data buffer
+    int id;
+    char name[32];
+    int size;
+    int used;
+    char data[MAX_FILE_SIZE];  // UPDATED
 } Inode;
 
 // Virtual File System mount structure
@@ -344,6 +346,7 @@ int vfs_open_file(const char* name) {
     return -1;
 }
 
+// Fix vfs_read_file to allow full reads:
 int vfs_read_file(int fd, char* buf, int len) {
     if (!vfs_initialized) {
         print_string("VFS not initialized in read", 17, 0);
@@ -365,7 +368,7 @@ int vfs_read_file(int fd, char* buf, int len) {
         return 0;
     }
     int bytes = 0;
-    while (bytes < len && fds[fd].offset < inode->size && fds[fd].offset < 128) {
+    while (bytes < len && fds[fd].offset < inode->size) {  // REMOVED 128 cap
         buf[bytes] = inode->data[fds[fd].offset];
         bytes++;
         fds[fd].offset++;
@@ -375,6 +378,7 @@ int vfs_read_file(int fd, char* buf, int len) {
     return bytes;
 }
 
+// Fix vfs_write_file to match new MAX_FILE_SIZE
 int vfs_write_file(int fd, const char* buf, int len) {
     if (!vfs_initialized) {
         print_string("VFS not initialized in write", 18, 0);
@@ -392,7 +396,7 @@ int vfs_write_file(int fd, const char* buf, int len) {
         return -1;
     }
     int bytes = 0;
-    while (bytes < len && fds[fd].offset < 128) {
+    while (bytes < len && fds[fd].offset < MAX_FILE_SIZE) {  // UPDATED
         inode->data[fds[fd].offset] = buf[bytes];
         bytes++;
         fds[fd].offset++;
