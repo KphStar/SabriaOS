@@ -1,136 +1,100 @@
-🧵 Sebria OS - Custom x86 Operating System Kernel (C & Assembly)
+# 🚀 Sebria OS - x86 Operating System Kernel (C & Assembly)
 
-Sebria OS is a handcrafted x86 operating system built from scratch using C and low-level Assembly, designed to run on QEMU with a custom shell, virtual file system, multitasking, and interactive UI via VGA text mode.
+Sebria OS is a minimal 32-bit operating system built from scratch in **C** and **x86 Assembly**, featuring a custom bootloader, VGA-based shell interface, multitasking, and a virtual file system. It is designed for educational purposes and runs inside QEMU.
 
-Inspired by low-level OS development projects like AlexJMercer's Bootloader/Kernel.
+> Inspired by projects like [AlexJMercer's Bootloader/Kernel](https://github.com/AlexJMercer/x86_64-Bootloader-and-Kernel)
 
-🧠 Features
+---
 
-🔧 Bootloader & Protected Mode
+## 🔧 Architecture Overview
 
-Custom Bootloader (in assembly)
+### 🔹 Bootloader (Assembly)
 
-Starts at 0x7C00 in real mode
+* Real mode entry at `0x7C00`
+* BIOS-based input and output
+* Loads kernel from sector 2 onward
+* Switches to protected mode using a GDT
 
-Uses BIOS interrupts for input
+### 🔹 Kernel (C + Assembly)
 
-Loads kernel from disk starting at sector 2
+* VGA text mode interface (80x25)
+* VGA color-coded shell with UI windows
+* Paging setup with flat memory model
+* Cooperative multitasking via a priority-based scheduler
+* User-space syscall simulation via `int 0x80`
 
-GDT Setup
+---
 
-Defines 32-bit flat memory segments
+## 💻 Shell Features
 
-Switches to protected mode via far jump
+| Command        | Description                        |
+| -------------- | ---------------------------------- |
+| `print`        | Prints a test message              |
+| `ls`           | Lists all files in the VFS         |
+| `touch <file>` | Create and write to a new file     |
+| `cat <file>`   | Paginate through file contents     |
+| `diary`        | Opens a text UI to save notes      |
+| `ps`           | Shows running processes            |
+| `kill <pid>`   | Terminates a process by PID        |
+| `dump`         | Displays screen buffer contents    |
+| `virtual`      | Shows virtual memory and file info |
+| `clear`        | Clears the shell display area      |
+| `halt`         | Halts the OS                       |
 
-🧑‍💻 Kernel (C Language)
+---
 
-VGA Text Interface (mode 0x03)
+## 📁 Virtual File System (VFS)
 
-Displays colorful framed windows and shell interface
+* Simple in-memory structure
+* Max 8 inodes (`MAX_INODES = 8`)
+* Max 2048 bytes per file (`MAX_FILE_SIZE = 2048`)
+* Supports `create`, `open`, `read`, `write`, `close`, `ls`
 
-Shell Commands
+---
 
-print – Prints a message
+## 🔁 Multitasking
 
-ls – Lists files in the VFS
+* Supports up to 8 processes
+* Priority-based scheduling
+* Kernel and simulated user-level processes
 
-touch <filename> – Create & write to a file
+---
 
-cat <filename> – Read and page through a file
+## 🧪 Building & Running
 
-ps – Show running processes
+### 🐳 Using Docker
 
-kill <pid> – Terminate a process
-
-clear – Clear the shell area
-
-diary – Opens a text box to write notes to diary.txt
-
-virtual – Displays VFS and process info
-
-dump – Dumps screen content into a modal
-
-halt – Halts the system
-
-📁 Virtual File System (VFS)
-
-In-memory file system with:
-
-MAX_INODES = 8
-
-MAX_FILE_SIZE = 2048 bytes per file
-
-File operations:
-
-create, open, read, write, close, list
-
-Data is persisted during runtime only
-
-🔁 Multitasking & Scheduler
-
-Cooperative multitasking with schedule_flag
-
-Process structure includes:
-
-PID, priority, user/kernel privilege
-
-Page directory support
-
-Simulated user-space task using int 0x80 syscall
-
-💾 Paging (Enabled)
-
-Simple page directory and page table setup
-
-Supports kernel/user separation (identity-mapped)
-
-⌨️ Keyboard Support
-
-Scancode to ASCII mapping via table
-
-Handles shell input, file write UI, and diary input
-
-Supports backspace, enter, escape, and navigation
-
-🟦 Graphical Shell Enhancements
-
-Color-coded windows and shell lines
-
-Framed modals for editing text and viewing dumps
-
-Uses VGA buffer directly (0xB8000)
-
-🧪 Build & Run
-
-🐳 Using Docker:
-
+```bash
 docker run -it -v $(pwd):/work myos-build bash
-make run   # or manually: qemu-system-i386 -cdrom os-image.iso -vga std
+make run  # or manually: qemu-system-i386 -cdrom os-image.iso -vga std
+```
 
-🧰 Requirements
+### 🔧 Requirements
 
-GCC cross-compiler (i686-elf-gcc)
+* `i686-elf-gcc`
+* `nasm`
+* `qemu-system-i386`
 
-NASM (for bootloader)
+---
 
-QEMU or Bochs for emulation
+## 🚧 Future Work
 
-🚧 Planned Features
+* Disk-backed persistence (FAT/ext2)
+* More robust paging and process isolation
+* Basic I/O streams and redirection
+* Support for external modules and drivers
 
-FAT32 or ext2 disk image support
+---
 
-Persistent file I/O via sector buffering
+## 📜 License
 
-Virtual memory paging extensions
+MIT License
 
-System call enhancements
+---
 
-File append mode, pipe simulation
+## 👤 Author
 
-📜 License
+**Duc Le**
+San Diego State University — Computer Science
 
-This project is free and open-source under the MIT License.
-
-👤 Author
-
-Duc Le – SDSU Computer Science
+---
