@@ -1250,25 +1250,50 @@ void keyboard_handler() {
                     display_shell_prompt();
                 } else {
                     const char* filename = shell_buffer + 4;
+                   // int fd = vfs_open_file(filename);
                     int fd = vfs_open_file(filename);
                     print_string("File descriptor: ", 15, 0);
                     print_number(fd, 15, 17);
                     if (fd >= 0) {
-                        char buf[128] = {0};
-                        int len = vfs_read_file(fd, buf, 127);
+                        //char buf[128] = {0};
+                        //int len = vfs_read_file(fd, buf, 127);
+                        char buf[256];  // Chunk buffer
+                         int total_read = 0;
+                         int row = 15;
+                         int col = 0;
+                         int bytes;
+
                         print_string("Bytes read: ", 16, 0);
-                        print_number(len, 16, 12);
-                        if (len >= 0) {
-                            buf[len] = 0;
-                            for (int i = 0; i < len; i++) {
-                                if (buf[i] < 32 || buf[i] > 126) {
-                                    buf[i] = ' ';
-                                }
-                            }
-                            print_string(buf, 17, 0);
-                        } else {
-                            print_string("Error reading file", 17, 0);
-                        }
+                       // print_number(len, 16, 12);
+                       // if (len >= 0) {
+                       //     buf[len] = 0;
+                        //    for (int i = 0; i < len; i++) {
+                        //        if (buf[i] < 32 || buf[i] > 126) {
+                         //           buf[i] = ' ';
+                         //       }
+                         //   }
+                         //   print_string(buf, 17, 0);
+                       // } else {
+                       //     print_string("Error reading file", 17, 0);
+                       // }
+
+                       while ((bytes = vfs_read_file(fd, buf, sizeof(buf) - 1)) > 0) {
+                buf[bytes] = 0;
+                for (int i = 0; i < bytes; i++) {
+                    char c = buf[i];
+                    if (c < 32 || c > 126) c = ' ';
+                    unsigned short* vga = (unsigned short*)VGA_BUFFER;
+                    vga[row * VGA_WIDTH + col] = 0x0700 | c;
+                    col++;
+                    if (col >= VGA_WIDTH) {
+                        col = 0;
+                        row++;
+                        if (row >= 22) break;
+                    }
+                }
+                total_read += bytes;
+                if (row >= 22) break;
+            }
                         vfs_close_file(fd);
                     } else {
                         print_string("File not found", 17, 0);
