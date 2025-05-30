@@ -8,6 +8,7 @@
 #define MAX_INODES 8
 #define KERNEL_BASE 0xC0000000
 #define USER_BASE 0x100000
+#define FILE_WRITE_MAX 2048
 
 // System call numbers
 #define SYS_WRITE 1
@@ -26,10 +27,12 @@ static int diary_index = 0;
 static int diary_active = 0;
 
 // File Write Buffer
-static char file_write_buffer[256];
+static char file_write_buffer[FILE_WRITE_MAX];
 static int file_write_index = 0;
 static int file_write_active = 0;
 static int current_file_fd = -1;
+
+
 
 // Process structure for task management
 typedef struct {
@@ -173,6 +176,23 @@ void print_number(int value, int row, int col) {
         buf[i - j - 1] = t;
     }
     print_string(buf, row, col);
+}
+
+void redraw_write_buffer(int text_row_start, int text_col, int rect_width, int rect_height) {
+    unsigned short* vga = (unsigned short*)VGA_BUFFER;
+    const int visible_rows = rect_height - 6;
+    const int visible_cols = rect_width - 4;
+
+    int start_pos = file_write_index - (visible_rows * visible_cols);
+    if (start_pos < 0) start_pos = 0;
+
+    for (int i = 0; i < visible_rows * visible_cols; i++) {
+        int buffer_pos = start_pos + i;
+        int r = i / visible_cols;
+        int c = i % visible_cols;
+        char ch = (buffer_pos < file_write_index) ? file_write_buffer[buffer_pos] : ' ';
+        vga[(text_row_start + r) * VGA_WIDTH + text_col + c] = 0x2F00 | ch;
+    }
 }
 
 // Virtual Memory Management
@@ -923,83 +943,57 @@ void keyboard_handler() {
 
     char c = (scancode < sizeof(scancode_to_ascii) && scancode_to_ascii[scancode]) ? scancode_to_ascii[scancode] : 0;
 
-    if (file_write_active) {
-        const int rect_width = 60;
-        const int rect_height = 15;
-        const int rect_start_row = (VGA_HEIGHT - rect_height) / 2;
-        const int rect_start_col = (VGA_WIDTH - rect_width) / 2;
-        const int text_row_start = rect_start_row + 5;
-        const int text_col = rect_start_col + 2;
-        static int current_row = 0;
-        static int current_col = 0;
-        int text_row = text_row_start + current_row;
+   if (file_write_active) {
+    const int rect_width = 60;
+    const int rect_height = 15;
+    const int rect_start_row = (VGA_HEIGHT - rect_height) / 2;
+    const int rect_start_col = (VGA_WIDTH - rect_width) / 2;
+    const int text_row_start = rect_start_row + 5;
+    const int text_col = rect_start_col + 2;
 
-        if (scancode == 0x0E && file_write_index > 0) {
-            file_write_index--;
-            if (current_col > 0) {
-                current_col--;
-            } else if (current_row > 0) {
-                current_row--;
-                current_col = rect_width - 4 - 1;
-            }
-            vga[(text_row_start + current_row) * VGA_WIDTH + text_col + current_col] = 0x2F00 | ' ';
-            file_write_buffer[file_write_index] = 0;
-            for (int i = 0; i < file_write_index && i < (rect_width - 4) * (rect_height - 6); i++) {
-                int r = text_row_start + (i / (rect_width - 4));
-                int c = text_col + (i % (rect_width - 4));
-                vga[r * VGA_WIDTH + c] = 0x2F00 | file_write_buffer[i];
-            }
-        } else if (scancode == 0x1C) {
-            file_write_buffer[file_write_index] = 0;
-            if (file_write_index > 0 && current_file_fd >= 0) {
-                int bytes_written = vfs_write_file(current_file_fd, file_write_buffer, file_write_index);
-                print_string("Bytes written: ", 18, 0);
-                print_number(bytes_written, 18, 15);
-                vfs_close_file(current_file_fd);
-                current_file_fd = -1;
-            } else {
-                print_string("No data or invalid fd", 18, 0);
-                if (current_file_fd >= 0) {
-                    vfs_close_file(current_file_fd);
-                    current_file_fd = -1;
-                }
-            }
-            file_write_active = 0;
-            current_row = 0;
-            current_col = 0;
-            clear_screen();
-            clear_shell();
-            display_shell_prompt();
-            shell_active = 1;
-        } else if (scancode == 0x01) {
+    if (scancode == 0x0E && file_write_index > 0) {  // Backspace
+        file_write_index--;
+        file_write_buffer[file_write_index] = 0;
+        redraw_write_buffer(text_row_start, text_col, rect_width, rect_height);
+    } else if (scancode == 0x1C) {  // Enter - Save
+        file_write_buffer[file_write_index] = 0;
+        if (file_write_index > 0 && current_file_fd >= 0) {
+            int bytes_written = vfs_write_file(current_file_fd, file_write_buffer, file_write_index);
+            print_string("Bytes written: ", 18, 0);
+            print_number(bytes_written, 18, 15);
+            vfs_close_file(current_file_fd);
+            current_file_fd = -1;
+        } else {
+            print_string("No data or invalid fd", 18, 0);
             if (current_file_fd >= 0) {
                 vfs_close_file(current_file_fd);
                 current_file_fd = -1;
             }
-            file_write_active = 0;
-            current_row = 0;
-            current_col = 0;
-            clear_screen();
-            clear_shell();
-            display_shell_prompt();
-            shell_active = 1;
-        } else if (c && c >= 32 && c <= 126 && current_row < rect_height - 6 && file_write_index < 127) {
-            if (current_col >= rect_width - 4) {
-                current_row++;
-                current_col = 0;
-                text_row = text_row_start + current_row;
-            }
-            if (current_row < rect_height - 6) {
-                file_write_buffer[file_write_index] = c;
-                vga[text_row * VGA_WIDTH + text_col + current_col] = 0x2F00 | c;
-                file_write_index++;
-                current_col++;
-                file_write_buffer[file_write_index] = 0;
-            }
         }
-        asm volatile("mov $0x20, %%al\n\tout %%al, $0x20" : : : "eax");
-        return;
+        file_write_active = 0;
+        clear_screen();
+        clear_shell();
+        display_shell_prompt();
+        shell_active = 1;
+    } else if (scancode == 0x01) {  // Esc - Cancel
+        if (current_file_fd >= 0) {
+            vfs_close_file(current_file_fd);
+            current_file_fd = -1;
+        }
+        file_write_active = 0;
+        clear_screen();
+        clear_shell();
+        display_shell_prompt();
+        shell_active = 1;
+    } else if (c && c >= 32 && c <= 126 && file_write_index < FILE_WRITE_MAX - 1) {
+        file_write_buffer[file_write_index++] = c;
+        file_write_buffer[file_write_index] = 0;
+        redraw_write_buffer(text_row_start, text_col, rect_width, rect_height);
     }
+
+    asm volatile("mov $0x20, %%al\n\tout %%al, $0x20" : : : "eax");
+    return;
+}
 
   // Handle diary input
     if (diary_active) {
