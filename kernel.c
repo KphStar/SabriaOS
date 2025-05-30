@@ -8,8 +8,8 @@
 #define MAX_INODES 8
 #define KERNEL_BASE 0xC0000000
 #define USER_BASE 0x100000
-#define FILE_WRITE_MAX 2048
-#define MAX_FILE_SIZE 2048
+#define FILE_WRITE_MAX 4096
+#define MAX_FILE_SIZE 4096
 
 // System call numbers
 #define SYS_WRITE 1
