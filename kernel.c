@@ -26,7 +26,7 @@ static int diary_index = 0;
 static int diary_active = 0;
 
 // File Write Buffer
-static char file_write_buffer[128];
+static char file_write_buffer[256];
 static int file_write_index = 0;
 static int file_write_active = 0;
 static int current_file_fd = -1;
